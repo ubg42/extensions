@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Chrome Game Extension Builder</title>
+
+<style>
+body{background:#0e0e0e;color:white;font-family:Arial;padding:30px;}
+h1{color:#ff0080;}
+.container{display:flex;gap:40px;flex-wrap:wrap;}
+.instructions{background:#1a1a1a;padding:20px;border-radius:12px;width:300px;}
+.builder{background:#111;padding:20px;border-radius:12px;min-width:300px;}
+label{display:block;margin-top:10px;color:#ccc;}
+input{width:100%;padding:10px;border-radius:8px;border:none;background:#222;color:white;}
+button{margin-top:15px;width:100%;padding:12px;background:#ff0080;border:none;color:white;font-size:16px;border-radius:10px;cursor:pointer;}
+</style>
+</head>
+
+<body>
+<h1>🎮 Chrome Game Extension Builder</h1>
+
+<div class="container">
+<div class="instructions">
+<h2>How to use</h2>
+<ol>
+<li>Enter Game URL</li>
+<li>Enter Name</li>
+<li>Upload Icon (optional)</li>
+<li>Click Build Extension</li>
+<li>Download ZIP</li>
+<li>Unzip → chrome://extensions → Developer Mode → Load unpacked</li>
+</ol>
+</div>
+
+<div class="builder">
+<label>Name</label>
+<input id="name" placeholder="Plonky Player">
+<label>Game URL</label>
+<input id="url" placeholder="https://example.com/game">
+<label>Icon (optional)</label>
+<input type="file" id="icon" accept="image/png">
+<button id="build">Build Extension</button>
+</div>
+</div>
+
+<script src="jszip.min.js"></script>
+
+<script>
+document.getElementById("build").onclick = async () => {
+  if(typeof JSZip === "undefined"){
+    alert("JSZip did not load. Make sure jszip.min.js is in the same folder.");
+    return;
+  }
+
+  let name = document.getElementById("name").value || "Game Player";
+  let url = document.getElementById("url").value;
+  let iconFile = document.getElementById("icon").files[0];
+
+  if(!url){
+    alert("Enter a game URL");
+    return;
+  }
+
+  let origin = new URL(url).origin;
+  let zip = new JSZip();
+
+  zip.file("manifest.json", JSON.stringify({
+    manifest_version:3,
+    name:name,
+    version:"1.0",
+    permissions:["tabs","webRequest","webRequestBlocking"],
+    host_permissions:[origin+"/*"],
+    background:{service_worker:"player.js"},
+    action:{default_title:name},
+    icons: iconFile ? {"128":"icon.png"} : undefined
+  }, null, 2));
+
+  zip.file("player.js", `
+chrome.webRequest.onHeadersReceived.addListener(
+  d => ({responseHeaders:d.responseHeaders.filter(h=>!["x-frame-options","content-security-policy"].includes(h.name.toLowerCase()))}),
+  { urls:["${origin}/*"] },
+  ["blocking","responseHeaders"]
+);
+chrome.action.onClicked.addListener(()=>chrome.tabs.create({url:chrome.runtime.getURL("player.html")}));
+`);
+
+  zip.file("player.html", `
+<!DOCTYPE html>
+<html><body style="margin:0;background:black">
+<iframe src="${url}" style="width:100vw;height:100vh;border:none"></iframe>
+</body></html>
+`);
+
+  if(iconFile){
+    zip.file("icon.png", await iconFile.arrayBuffer());
+  }
+
+  let blob = await zip.generateAsync({type:"blob"});
+  let a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name.replace(/\s/g,"_") + ".zip";
+  a.click();
+};
+</script>
+
+</body>
+</html>
